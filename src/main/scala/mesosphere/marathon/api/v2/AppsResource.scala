@@ -52,7 +52,7 @@ class AppsResource @Inject() (
     // additional embeds are deprecated!
     val resolvedEmbed = InfoEmbedResolver.resolveApp(embed.asScala.toSet) +
       AppInfo.Embed.Counts + AppInfo.Embed.Deployments
-    val mapped = result(appInfoService.queryAll(selector, resolvedEmbed))
+    val mapped = result(appInfoService.selectBy(selector, resolvedEmbed))
     Response.ok(jsonObjString("apps" -> mapped)).build()
   }
 
@@ -103,8 +103,7 @@ class AppsResource @Inject() (
       result(groupManager.group(groupId)) match {
         case Some(group) =>
           checkAuthorization(ViewGroup, group)
-          val appsWithTasks = result(appInfoService.queryAllInGroup(groupId, resolvedEmbed))
-            .filter(appInfo => isAuthorized(ViewApp, appInfo.app))
+          val appsWithTasks = result(appInfoService.selectAppsInGroup(groupId, allAuthorized, resolvedEmbed))
           ok(jsonObjString("*" -> appsWithTasks))
         case None =>
           unknownGroup(groupId)
@@ -112,7 +111,7 @@ class AppsResource @Inject() (
     }
 
     def app(appId: PathId): Response = {
-      result(appInfoService.queryForAppId(appId, resolvedEmbed)) match {
+      result(appInfoService.selectApp(appId, allAuthorized, resolvedEmbed)) match {
         case Some(appInfo) =>
           checkAuthorization(ViewApp, appInfo.app)
           ok(jsonObjString("app" -> appInfo))
@@ -257,6 +256,10 @@ class AppsResource @Inject() (
       label.map(new LabelSelectorParsers().parsed)
     ).flatten
     AppSelector.forall(selectors)
+  }
+
+  def allAuthorized(implicit identity: Identity): AppSelector = new AppSelector {
+    override def matches(app: AppDefinition): Boolean = isAuthorized(ViewApp, app)
   }
 
   def selectAuthorized(fn: => AppSelector)(implicit identity: Identity): AppSelector = {

@@ -5,7 +5,7 @@ import java.util.Collections
 import mesosphere.marathon.api.{ TestGroupManagerFixture, TestAuthFixture }
 import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.api.v2.json.GroupUpdate
-import mesosphere.marathon.core.appinfo.{ AppInfo, GroupInfo, GroupInfoService }
+import mesosphere.marathon.core.appinfo._
 import mesosphere.marathon.state.PathId._
 import mesosphere.marathon.state._
 import mesosphere.marathon.test.Mockito
@@ -154,45 +154,6 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
     intercept[UnknownGroupException] { groupsResource.delete("/foo", false, req) }
   }
 
-  test("access with limited authorization gives a filtered apps listing") {
-    Given("An authorized identity with limited ACL's")
-    auth.authenticated = true
-    auth.authorized = true
-    auth.authFn = (resource: Any) => {
-      val id = resource match {
-        case app: AppDefinition => app.id.toString
-        case _                  => resource.asInstanceOf[Group].id.toString
-      }
-      id.startsWith("/visible")
-    }
-
-    val group = Group(PathId.empty, Set(AppDefinition("/app1".toPath)), Set(
-      Group("/visible".toPath, Set(AppDefinition("/visible/app1".toPath)), Set(
-        Group("/visible/group".toPath, Set(AppDefinition("/visible/group/app1".toPath)))
-      )),
-      Group("/secure".toPath, Set(AppDefinition("/secure/app1".toPath)), Set(
-        Group("/secure/group".toPath, Set(AppDefinition("/secure/group/app1".toPath)))
-      )),
-      Group("/other".toPath, Set(AppDefinition("/other/app1".toPath)), Set(
-        Group("/other/group".toPath, Set(AppDefinition("/other/group/app1".toPath)))
-      ))
-    ))
-    groupManager.group(PathId.empty) returns Future.successful(Some(group))
-
-    When("The root group is fetched")
-    val root = groupsResource.root(auth.request, embed)
-
-    Then("The root group contains only entities according to ACL's")
-    root.getStatus should be (200)
-    val result = Json.parse(root.getEntity.asInstanceOf[String])
-      .as[GroupUpdate]
-      .copy(version = None)
-      .apply(Group.empty, Timestamp.now())
-    result.transitiveApps should have size 2
-    result.transitiveApps.map(_.id.toString) should be(Set("/visible/app1", "/visible/group/app1"))
-    result.transitiveGroups should have size 3
-  }
-
   test("Group Versions for root are transferred as simple json string array (Fix #2329)") {
     Given("Specific Group versions")
     val groupVersions = Seq(Timestamp.now(), Timestamp.now())
@@ -234,15 +195,6 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
     auth = new TestAuthFixture
     config = mock[MarathonConf]
     groupManager = mock[GroupManager]
-    groupInfo = mock[GroupInfoService]
-    groupInfo.queryForGroup(any[Group], any[Set[AppInfo.Embed]], any[Set[GroupInfo.Embed]]) answers { args =>
-      def info(group: Group): GroupInfo = {
-        val apps = group.apps.toSeq.map(AppInfo(_))
-        val groups = group.groups.toSeq.map(info)
-        GroupInfo(group, Some(apps), Some(groups))
-      }
-      Future.successful(info(args(0).asInstanceOf[Group]))
-    }
     groupsResource = new GroupsResource(groupManager, groupInfo, auth.auth, auth.auth, config)
 
     config.zkTimeoutDuration returns 1.second

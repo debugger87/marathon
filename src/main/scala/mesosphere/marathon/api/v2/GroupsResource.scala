@@ -11,20 +11,21 @@ import mesosphere.marathon.api.v2.InfoEmbedResolver._
 import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.api.v2.json.GroupUpdate
 import mesosphere.marathon.api.{ AuthResource, MarathonMediaType }
-import mesosphere.marathon.core.appinfo.{ GroupInfo, GroupInfoService }
+import mesosphere.marathon.core.appinfo.{ GroupSelector, GroupInfoService }
 import mesosphere.marathon.plugin.auth._
 import mesosphere.marathon.state.PathId._
 import mesosphere.marathon.state._
 import mesosphere.marathon.upgrade.DeploymentPlan
 import mesosphere.marathon.{ UnknownGroupException, ConflictingChangeException, MarathonConf }
-import play.api.libs.json.{ Json, Writes }
+import play.api.libs.json.Json
 import scala.collection.JavaConverters._
+import scala.concurrent.Future
 
 @Path("v2/groups")
 @Produces(Array(MarathonMediaType.PREFERRED_APPLICATION_JSON))
 class GroupsResource @Inject() (
     groupManager: GroupManager,
-    groupInfoService: GroupInfoService,
+    infoService: GroupInfoService,
     val authenticator: Authenticator,
     val authorizer: Authorizer,
     val config: MarathonConf) extends AuthResource {
@@ -52,6 +53,7 @@ class GroupsResource @Inject() (
   def root(@Context req: HttpServletRequest, @QueryParam("embed") embed: java.util.Set[String]): Response =
     group("/", embed, req)
 
+  //scalastyle:off cyclomatic.complexity
   /**
     * Get a specific group, optionally with specific version
     * @param id the identifier of the group encoded as path
@@ -63,34 +65,47 @@ class GroupsResource @Inject() (
   def group(@PathParam("id") id: String,
             @QueryParam("embed") embed: java.util.Set[String],
             @Context req: HttpServletRequest): Response = authenticated(req) { implicit identity =>
+
+    import scala.concurrent.ExecutionContext.Implicits.global
+
+    val embeds = if (embed.isEmpty) defaultEmbeds else embed.asScala.toSet
+    val (appEmbed, groupEmbed) = resolveAppGroup(embeds)
+
     //format:off
-    def groupResponse[T](id: PathId, fn: GroupInfo => T, version: Option[Timestamp] = None)(
-      implicit writes: Writes[T]): Response = {
-      //format:on
-      result(version.map(groupManager.group(id, _)).getOrElse(groupManager.group(id))) match {
-        case Some(group) => ok(jsonString(fn(authorizedView(group, embed))))
-        case None        => unknownGroup(id, version)
+    def appsResponse(id: PathId) =
+      infoService.selectAppsInGroup(id, allAuthorized, appEmbed).map(info => ok(info))
+
+    def groupResponse(id: PathId) =
+      infoService.selectGroup(id, allAuthorized, appEmbed, groupEmbed).map {
+        case Some(info) => ok(info)
+        case None       => unknownGroup(id)
+      }
+
+    def groupVersionResponse(id: PathId, version: Timestamp) =
+      infoService.selectGroupVersion(id, version, allAuthorized, groupEmbed).map {
+        case Some(info) => ok(info)
+        case None       => unknownGroup(id)
+      }
+
+    def versionsResponse(groupId: PathId) = {
+      groupManager.group(groupId).map { maybeGroup =>
+        withAuthorization(ViewGroup, maybeGroup, unknownGroup(groupId)) { _ =>
+          result(groupManager.versions(groupId).map(versions => ok(versions)))
+        }
       }
     }
 
-    def versionsResponse(groupId: PathId): Response = {
-      val maybeGroup = result(groupManager.group(groupId))
-      withAuthorization(ViewGroup, maybeGroup, unknownGroup(groupId)) { _ =>
-        ok(jsonString(result(groupManager.versions(groupId))))
-      }
+    val response: Future[Response] = id match {
+      case ListApps(gid)              => appsResponse(gid.toRootPath)
+      case ListRootApps()             => appsResponse(PathId.empty)
+      case ListVersionsRE(gid)        => versionsResponse(gid.toRootPath)
+      case ListRootVersionRE()        => versionsResponse(PathId.empty)
+      case GetVersionRE(gid, version) => groupVersionResponse(gid.toRootPath, Timestamp(version))
+      case GetRootVersionRE(version)  => groupVersionResponse(PathId.empty, Timestamp(version))
+      case _                          => groupResponse(id.toRootPath)
     }
 
-    id match {
-      case ListApps(gid)       => groupResponse(gid.toRootPath, _.transitiveApps)
-      case ListRootApps()      => groupResponse(PathId.empty, _.transitiveApps)
-      case ListVersionsRE(gid) => versionsResponse(gid.toRootPath)
-      case ListRootVersionRE() => versionsResponse(PathId.empty)
-      case GetVersionRE(gid, version) =>
-        groupResponse(gid.toRootPath, Predef.identity, version = Some(Timestamp(version)))
-      case GetRootVersionRE(version) =>
-        groupResponse(PathId.empty, Predef.identity, version = Some(Timestamp(version)))
-      case _ => groupResponse(id.toRootPath, Predef.identity)
-    }
+    result(response)
   }
 
   /**
@@ -264,19 +279,8 @@ class GroupsResource @Inject() (
     (deployment, effectivePath)
   }
 
-  private[this] def authorizedView(root: Group, embed: java.util.Set[String])(implicit ident: Identity): GroupInfo = {
-    def authorizedToViewApp(app: AppDefinition): Boolean = isAuthorized(ViewApp, app)
-    val visibleGroups = root.transitiveGroups.filter(group => isAuthorized(ViewGroup, group)).map(_.id)
-    val parents = visibleGroups.flatMap(_.allParents) -- visibleGroups
-
-    val viewable = root.updateGroup { subGroup =>
-      if (visibleGroups.contains(subGroup.id)) Some(subGroup)
-      else if (parents.contains(subGroup.id)) Some(subGroup.copy(apps = subGroup.apps.filter(authorizedToViewApp)))
-      else None
-    }.getOrElse(Group.empty) // fallback, if root is not allowed
-
-    val embeds = if (embed.isEmpty) defaultEmbeds else embed.asScala.toSet
-    val (appResolve, groupResolve) = resolveAppGroup(embeds)
-    result(groupInfoService.queryForGroup(viewable, appResolve, groupResolve))
+  def allAuthorized(implicit identity: Identity): GroupSelector = new GroupSelector {
+    override def matches(group: Group): Boolean = isAuthorized(ViewGroup, group)
+    override def matches(app: AppDefinition): Boolean = isAuthorized(ViewApp, app)
   }
 }

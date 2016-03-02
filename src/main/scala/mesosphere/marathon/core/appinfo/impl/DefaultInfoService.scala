@@ -1,7 +1,7 @@
 package mesosphere.marathon.core.appinfo.impl
 
-import mesosphere.marathon.core.appinfo.AppInfo
 import mesosphere.marathon.core.appinfo._
+import mesosphere.marathon.core.appinfo.AppInfo.Embed
 import mesosphere.marathon.state._
 import org.slf4j.LoggerFactory
 
@@ -16,37 +16,57 @@ private[appinfo] class DefaultInfoService(
 
   private[this] val log = LoggerFactory.getLogger(getClass)
 
-  override def queryForAppId(id: PathId, embed: Set[AppInfo.Embed]): Future[Option[AppInfo]] = {
+  override def selectApp(id: PathId, selector: AppSelector, embed: Set[AppInfo.Embed]): Future[Option[AppInfo]] = {
     log.debug(s"queryForAppId $id")
     appRepository.currentVersion(id).flatMap {
-      case Some(app) => newBaseData().appInfoFuture(app, embed).map(Some(_))
-      case None      => Future.successful(None)
+      case Some(app) if selector.matches(app) => newBaseData().appInfoFuture(app, embed).map(Some(_))
+      case None                               => Future.successful(None)
     }
   }
 
-  override def queryAll(selector: AppSelector, embed: Set[AppInfo.Embed]): Future[Seq[AppInfo]] = {
+  override def selectBy(selector: AppSelector, embed: Set[AppInfo.Embed]): Future[Seq[AppInfo]] = {
     log.debug(s"queryAll")
     groupManager.rootGroup()
       .map(_.transitiveApps.filter(selector.matches))
       .flatMap(resolveAppInfos(_, embed))
   }
 
-  override def queryAllInGroup(groupId: PathId, embed: Set[AppInfo.Embed]): Future[Seq[AppInfo]] = {
+  override def selectAppsInGroup(groupId: PathId, selector: AppSelector,
+                                 embed: Set[AppInfo.Embed]): Future[Seq[AppInfo]] = {
     log.debug(s"queryAllInGroup $groupId")
     groupManager
       .group(groupId)
-      .map(_.map(_.transitiveApps).getOrElse(Seq.empty))
+      .map(_.map(_.transitiveApps.filter(selector.matches)).getOrElse(Seq.empty))
       .flatMap(resolveAppInfos(_, embed))
   }
 
-  override def queryForGroup(group: Group,
-                             appEmbed: Set[AppInfo.Embed],
-                             groupEmbed: Set[GroupInfo.Embed]): Future[GroupInfo] = {
+  override def selectGroup(groupId: PathId, groupSelector: GroupSelector,
+                           appEmbed: Set[Embed], groupEmbed: Set[GroupInfo.Embed]): Future[Option[GroupInfo]] = {
+    groupManager.group(groupId).flatMap {
+      case Some(group) => queryForGroup(group, groupSelector, appEmbed, groupEmbed).map(Some(_))
+      case None        => Future.successful(None)
+    }
+  }
+
+  override def selectGroupVersion(groupId: PathId, version: Timestamp, groupSelector: GroupSelector,
+                                  groupEmbed: Set[GroupInfo.Embed]): Future[Option[GroupInfo]] = {
+    groupManager.group(groupId, version).flatMap {
+      case Some(group) => queryForGroup(group, groupSelector, Set.empty, groupEmbed).map(Some(_))
+      case None        => Future.successful(None)
+    }
+  }
+
+  private[this] def queryForGroup(group: Group,
+                                  groupSelector: GroupSelector,
+                                  appEmbed: Set[AppInfo.Embed],
+                                  groupEmbed: Set[GroupInfo.Embed]): Future[GroupInfo] = {
 
     //fetch all transitive app infos with one request
     val appInfos = {
-      if (groupEmbed(GroupInfo.Embed.Apps)) resolveAppInfos(group.transitiveApps, appEmbed)
-      else Future.successful(Seq.empty)
+      if (groupEmbed(GroupInfo.Embed.Apps))
+        resolveAppInfos(group.transitiveApps.filter(groupSelector.matches), appEmbed)
+      else
+        Future.successful(Seq.empty)
     }
 
     appInfos.map { apps =>
@@ -54,7 +74,7 @@ private[appinfo] class DefaultInfoService(
       def queryGroup(ref: Group): GroupInfo = {
         val groups: Option[Seq[GroupInfo]] =
           if (groupEmbed(GroupInfo.Embed.Groups))
-            Some(ref.groups.toIndexedSeq.map(queryGroup).sortBy(_.group.id))
+            Some(ref.groups.toIndexedSeq.filter(groupSelector.matches).map(queryGroup).sortBy(_.group.id))
           else
             None
         val apps: Option[Seq[AppInfo]] =

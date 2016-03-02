@@ -7,13 +7,13 @@ You can specify this parameter multiple times with different values.
 Unknown embed parameters are ignored.
 If you omit this parameter, it defaults to `group.groups`, `group.apps`
 
-- `group.groups` embed all child groups of each group<br/>
+- `group.groups` embed all child groups of each group
 
-- `group.apps` embed all apps of each group<br/>
+- `group.apps` embed all apps of each group
 
-- `group.apps.tasks` embed all tasks of each application<br/>
+- `group.apps.tasks` embed all tasks of each application
 
-- `group.apps.counts` embed all task counts (tasksStaged, tasksRunning, tasksHealthy, tasksUnhealthy) <br/>
+- `group.apps.counts` embed all task counts (tasksStaged, tasksRunning, tasksHealthy, tasksUnhealthy) 
 
 - `group.apps.deployments` embed all deployment identifier, if the related app currently is in deployment.
 
