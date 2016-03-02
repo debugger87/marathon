@@ -69,7 +69,7 @@ private[v2] object InfoEmbedResolver {
     * Resolve apps and groups embed parameter into distinct sets.
     */
   def resolveAppGroup(embeds: Set[String]): (Set[AppInfo.Embed], Set[GroupInfo.Embed]) = {
-    val (groups, apps) = embeds.partition(_.startsWith("group."))
+    val (apps, groups) = embeds.partition(_.startsWith("group.apps."))
     (resolveApp(apps), resolveGroup(groups))
   }
 }

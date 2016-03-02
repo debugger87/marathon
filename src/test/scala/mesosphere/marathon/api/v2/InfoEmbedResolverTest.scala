@@ -77,7 +77,7 @@ class InfoEmbedResolverTest extends MarathonSpec with GivenWhenThen with Matcher
 
   test("App / Group resolving works") {
     When("We resolve group embed infos")
-    val (app, group) = InfoEmbedResolver.resolveAppGroup(Set("group.groups", "group.apps", "app.tasks", "group.unknown", "unknown"))
+    val (app, group) = InfoEmbedResolver.resolveAppGroup(Set("group.groups", "group.apps", "group.apps.tasks", "group.apps.unknown", "group.unknown", "unknown"))
 
     Then("The embed parameter are resolved correctly")
     group should be(Set(GroupInfo.Embed.Apps, GroupInfo.Embed.Groups))
