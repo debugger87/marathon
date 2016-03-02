@@ -43,23 +43,29 @@ private[appinfo] class DefaultInfoService(
                              appEmbed: Set[AppInfo.Embed],
                              groupEmbed: Set[GroupInfo.Embed]): Future[GroupInfo] = {
 
-    def queryGroups =
-      if (groupEmbed(GroupInfo.Embed.Groups))
-        group.groups.foldLeft(Future.successful(List.empty[GroupInfo])) {
-          case (future, subGroup) =>
-            future.flatMap(result => queryForGroup(subGroup, appEmbed, groupEmbed).map(info => info :: result))
-        }.map(list => Some(list.sortBy(_.group.id)))
-      else Future.successful(None)
+    //fetch all transitive app infos with one request
+    val appInfos = {
+      if (groupEmbed(GroupInfo.Embed.Apps)) resolveAppInfos(group.transitiveApps, appEmbed)
+      else Future.successful(Seq.empty)
+    }
 
-    def queryApps =
-      if (groupEmbed(GroupInfo.Embed.Apps))
-        resolveAppInfos(group.apps, appEmbed).map(list => Some(list.sortBy(_.app.id)))
-      else Future.successful(None)
-
-    for {
-      groups <- queryGroups
-      apps <- queryApps
-    } yield GroupInfo(group, apps, groups)
+    appInfos.map { apps =>
+      val infoById = apps.map(info => info.app.id -> info).toMap
+      def queryGroup(ref: Group): GroupInfo = {
+        val groups: Option[Seq[GroupInfo]] =
+          if (groupEmbed(GroupInfo.Embed.Groups))
+            Some(ref.groups.toIndexedSeq.map(queryGroup).sortBy(_.group.id))
+          else
+            None
+        val apps: Option[Seq[AppInfo]] =
+          if (groupEmbed(GroupInfo.Embed.Apps))
+            Some(ref.apps.toIndexedSeq.flatMap(a => infoById.get(a.id)).sortBy(_.app.id))
+          else
+            None
+        GroupInfo(ref, apps, groups)
+      }
+      queryGroup(group)
+    }
   }
 
   private[this] def resolveAppInfos(apps: Iterable[AppDefinition], embed: Set[AppInfo.Embed]): Future[Seq[AppInfo]] = {

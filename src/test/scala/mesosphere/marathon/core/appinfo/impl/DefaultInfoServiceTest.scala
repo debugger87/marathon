@@ -210,14 +210,14 @@ class DefaultInfoServiceTest extends MarathonSpec with GivenWhenThen with Mockit
     When("querying extending group information without apps")
     val result2 = f.infoService.queryForGroup(group, Set.empty, Set(GroupInfo.Embed.Groups))
 
-    Then("The group info contains apps and groups")
+    Then("The group info contains no apps but groups")
     result2.futureValue.maybeGroups should be(defined)
     result2.futureValue.maybeApps should be(empty)
 
-    When("querying extending group information without apps")
+    When("querying extending group information without apps and groups")
     val result3 = f.infoService.queryForGroup(group, Set.empty, Set.empty)
 
-    Then("The group info contains apps and groups")
+    Then("The group info contains no apps nor groups")
     result3.futureValue.maybeGroups should be(empty)
     result3.futureValue.maybeApps should be(empty)
   }

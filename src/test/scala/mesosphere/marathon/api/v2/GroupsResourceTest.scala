@@ -1,5 +1,7 @@
 package mesosphere.marathon.api.v2
 
+import java.util.Collections
+
 import mesosphere.marathon.api.{ TestGroupManagerFixture, TestAuthFixture }
 import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.api.v2.json.GroupUpdate
@@ -10,7 +12,6 @@ import mesosphere.marathon.test.Mockito
 import mesosphere.marathon.{ UnknownGroupException, MarathonConf, MarathonSpec }
 import org.scalatest.{ GivenWhenThen, Matchers }
 import play.api.libs.json.{ JsObject, Json }
-import scala.collection.JavaConverters._
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -227,7 +228,7 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
   var groupsResource: GroupsResource = _
   var auth: TestAuthFixture = _
   var groupInfo: GroupInfoService = _
-  var embed: java.util.Set[String] = _
+  val embed: java.util.Set[String] = Collections.emptySet()
 
   before {
     auth = new TestAuthFixture
@@ -243,7 +244,6 @@ class GroupsResourceTest extends MarathonSpec with Matchers with Mockito with Gi
       Future.successful(info(args(0).asInstanceOf[Group]))
     }
     groupsResource = new GroupsResource(groupManager, groupInfo, auth.auth, auth.auth, config)
-    embed = Set.empty[String].asJava
 
     config.zkTimeoutDuration returns 1.second
   }

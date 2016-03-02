@@ -7,6 +7,7 @@ import javax.ws.rs._
 import javax.ws.rs.core.{ Context, Response }
 
 import com.codahale.metrics.annotation.Timed
+import mesosphere.marathon.api.v2.InfoEmbedResolver._
 import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.api.v2.json.GroupUpdate
 import mesosphere.marathon.api.{ AuthResource, MarathonMediaType }
@@ -28,6 +29,14 @@ class GroupsResource @Inject() (
     val authorizer: Authorizer,
     val config: MarathonConf) extends AuthResource {
 
+  /**
+    * For backward compatibility, we embed always apps and groups if nothing is specified.
+    */
+  val defaultEmbeds = Set(EmbedApps, EmbedGroups)
+
+  /**
+    * Path matchers. Needed since Jersey is not able to handle parameters with slashes.
+    */
   val ListApps = """^((?:.+/)|)apps$""".r
   val ListRootApps = """^apps$""".r
   val ListVersionsRE = """^(.+)/versions$""".r
@@ -266,9 +275,7 @@ class GroupsResource @Inject() (
       else None
     }.getOrElse(Group.empty) // fallback, if root is not allowed
 
-    //for backward compatibility, we always render apps and groups, if nothing is given
-    import InfoEmbedResolver._
-    val embeds = if (embed.isEmpty) Set(EmbedApps, EmbedGroups) else embed.asScala.toSet
+    val embeds = if (embed.isEmpty) defaultEmbeds else embed.asScala.toSet
     val (appResolve, groupResolve) = resolveAppGroup(embeds)
     result(groupInfoService.queryForGroup(viewable, appResolve, groupResolve))
   }

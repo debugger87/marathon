@@ -41,7 +41,7 @@ private[v2] object InfoEmbedResolver {
       case EmbedCounts          => Set(AppInfo.Embed.Counts)
       case EmbedTaskStats       => Set(AppInfo.Embed.TaskStats)
       case unknown: String =>
-        log.warn(s"unknown embed argument: $prefix$unknown")
+        log.warn(s"unknown app embed argument: $prefix$unknown")
         Set.empty
     }
 
@@ -60,7 +60,7 @@ private[v2] object InfoEmbedResolver {
       case EmbedGroups => Some(GroupInfo.Embed.Groups)
       case EmbedApps   => Some(GroupInfo.Embed.Apps)
       case unknown: String =>
-        log.warn(s"unknown embed argument: $unknown")
+        log.warn(s"unknown group embed argument: $unknown")
         None
     }
   }

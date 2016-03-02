@@ -11,7 +11,7 @@ get:
       description:
         Embeds nested resources that match the supplied path.
         You can specify this parameter multiple times with different values.
-        Unknown embed paraemters are ignored.
+        Unknown embed parameters are ignored.
         If you omit this parameter, it defaults to <code>group.groups</code>, <code>group.apps</code>
 
         - <code>group.groups</code> embed all child groups of each group<br/>
@@ -26,7 +26,7 @@ get:
 
         - <code>group.apps.lastTaskFailure</code> embeds the lastTaskFailure for the application if there is one.
 
-        - <code>group.apps.taskStats</code> exposes task statatistics in the JSON.
+        - <code>group.apps.taskStats</code> exposes task statistics in the JSON.
 
       enum: [ group.groups, group.apps, group.apps.tasks, group.apps.count, group.apps.deployments, group.apps.lastTaskFailure, group.apps.failures, group.apps.taskStats ]
       repeat: true

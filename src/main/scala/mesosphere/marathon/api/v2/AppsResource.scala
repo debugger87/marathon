@@ -12,8 +12,8 @@ import mesosphere.marathon.api.v2.Validation._
 import mesosphere.marathon.api.v2.json.AppUpdate
 import mesosphere.marathon.api.v2.json.Formats._
 import mesosphere.marathon.api.{ AuthResource, MarathonMediaType, RestResource }
-import mesosphere.marathon.core.appinfo.{ AppInfo, AppInfoService, AppSelector, TaskCounts }
-import mesosphere.marathon.core.appinfo.AppInfo.Embed
+import mesosphere.marathon.core.appinfo.{ AppInfoService, AppSelector, TaskCounts }
+import mesosphere.marathon.core.appinfo.AppInfo
 import mesosphere.marathon.core.base.Clock
 import mesosphere.marathon.event.{ ApiPostEvent, EventModule }
 import mesosphere.marathon.plugin.auth._
@@ -50,7 +50,8 @@ class AppsResource @Inject() (
             @Context req: HttpServletRequest): Response = authenticated(req) { implicit identity =>
     val selector = selectAuthorized(search(Option(cmd), Option(id), Option(label)))
     // additional embeds are deprecated!
-    val resolvedEmbed = InfoEmbedResolver.resolveApp(embed.asScala.toSet) + Embed.Counts + Embed.Deployments
+    val resolvedEmbed = InfoEmbedResolver.resolveApp(embed.asScala.toSet) +
+      AppInfo.Embed.Counts + AppInfo.Embed.Deployments
     val mapped = result(appInfoService.queryAll(selector, resolvedEmbed))
     Response.ok(jsonObjString("apps" -> mapped)).build()
   }
@@ -95,7 +96,7 @@ class AppsResource @Inject() (
            @Context req: HttpServletRequest): Response = authenticated(req) { implicit identity =>
     val resolvedEmbed = InfoEmbedResolver.resolveApp(embed.asScala.toSet) ++ Set(
       // deprecated. For compatibility.
-      Embed.Counts, Embed.Tasks, Embed.LastTaskFailure, Embed.Deployments
+      AppInfo.Embed.Counts, AppInfo.Embed.Tasks, AppInfo.Embed.LastTaskFailure, AppInfo.Embed.Deployments
     )
 
     def transitiveApps(groupId: PathId): Response = {
